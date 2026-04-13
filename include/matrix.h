@@ -21,6 +21,8 @@ int matrix_apply(Matrix *A, float (*sigma)(float) ,Matrix *out);
 int matrix_fill(Matrix *m, float value);
 int matrix_randomize(Matrix *m);
 int matrix_add(Matrix *A, Matrix *B, Matrix *out);
+int matrix_sub(Matrix *A, Matrix *B, Matrix *out);
+int matrix_add_scaled(Matrix *A, Matrix *B, float scalar, Matrix *out);
 void matrix_print(Matrix *m);
 
 #endif //NEURAL_C_MATRIX_H

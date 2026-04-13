@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "layer.h"
+#include "network.h"
 
 #define FLOAT_TOL 1e-5f
 
@@ -227,6 +228,91 @@ static void test_layer_free_is_null_safe(void) {
     tests_run++;
 }
 
+static void test_network_backward_uses_activation_output_for_sigmoid_derivative(void) {
+    uint32_t sizes[] = {1, 1};
+    ActivationType types[] = {SIGMOID};
+    Network *net = network_create(sizes, 2, types);
+    Matrix *input = matrix_create(1, 1);
+    Matrix *target = matrix_create(1, 1);
+    Layer *out_l;
+
+    ASSERT_TRUE(net != NULL, "network_create should succeed");
+    ASSERT_TRUE(input != NULL, "matrix_create should succeed");
+    ASSERT_TRUE(target != NULL, "matrix_create should succeed");
+
+    out_l = net->layers[0];
+    out_l->W->data[0] = 0.0f;
+    out_l->B->data[0] = 0.0f;
+    input->data[0] = 1.0f;
+    target->data[0] = 0.0f;
+
+    ASSERT_TRUE(network_predict(net, input) == out_l->A, "network_predict should return the last activation");
+    network_backward(net, input, target);
+
+    assert_float_close(out_l->A->data[0], 0.5f, "sigmoid output should be 0.5");
+    assert_float_close(out_l->dZ->data[0], 0.25f, "sigmoid derivative should be computed from activation output");
+    assert_float_close(out_l->delta->data[0], 0.125f, "output delta should use sigmoid'(a)");
+    assert_float_close(out_l->dW->data[0], 0.125f, "weight gradient should match delta * input");
+    assert_float_close(out_l->dB->data[0], 0.125f, "bias gradient should match delta");
+
+    matrix_free(&input);
+    matrix_free(&target);
+    network_free(&net);
+    tests_run++;
+}
+
+static void test_network_backward_uses_activation_output_for_hidden_tanh_derivative(void) {
+    uint32_t sizes[] = {1, 1, 1};
+    ActivationType types[] = {TANH, SIGMOID};
+    Network *net = network_create(sizes, 3, types);
+    Matrix *input = matrix_create(1, 1);
+    Matrix *target = matrix_create(1, 1);
+    Layer *hidden_l;
+    Layer *out_l;
+    float hidden_a;
+    float output_a;
+    float expected_out_dz;
+    float expected_out_delta;
+    float expected_hidden_backprop;
+    float expected_hidden_dz;
+    float expected_hidden_delta;
+
+    ASSERT_TRUE(net != NULL, "network_create should succeed");
+    ASSERT_TRUE(input != NULL, "matrix_create should succeed");
+    ASSERT_TRUE(target != NULL, "matrix_create should succeed");
+
+    hidden_l = net->layers[0];
+    out_l = net->layers[1];
+
+    hidden_l->W->data[0] = 1.0f;
+    hidden_l->B->data[0] = 0.0f;
+    out_l->W->data[0] = 1.0f;
+    out_l->B->data[0] = 0.0f;
+    input->data[0] = 0.5f;
+    target->data[0] = 0.0f;
+
+    network_predict(net, input);
+    network_backward(net, input, target);
+
+    hidden_a = tanhf(0.5f);
+    output_a = 1.0f / (1.0f + expf(-hidden_a));
+    expected_out_dz = output_a * (1.0f - output_a);
+    expected_out_delta = output_a * expected_out_dz;
+    expected_hidden_backprop = expected_out_delta;
+    expected_hidden_dz = 1.0f - (hidden_a * hidden_a);
+    expected_hidden_delta = expected_hidden_backprop * expected_hidden_dz;
+
+    assert_float_close(hidden_l->A->data[0], hidden_a, "hidden activation should match tanh");
+    assert_float_close(out_l->A->data[0], output_a, "output activation should match sigmoid");
+    assert_float_close(hidden_l->dZ->data[0], expected_hidden_dz, "hidden tanh derivative should be computed from activation output");
+    assert_float_close(hidden_l->delta->data[0], expected_hidden_delta, "hidden delta should use tanh'(a)");
+
+    matrix_free(&input);
+    matrix_free(&target);
+    network_free(&net);
+    tests_run++;
+}
+
 int main(void) {
     test_get_activation_supports_all_declared_types();
     test_activation_derivatives_match_expected_values();
@@ -239,6 +325,8 @@ int main(void) {
     test_layer_forward_rejects_invalid_input_columns();
     test_layer_forward_rejects_null_arguments();
     test_layer_free_is_null_safe();
+    test_network_backward_uses_activation_output_for_sigmoid_derivative();
+    test_network_backward_uses_activation_output_for_hidden_tanh_derivative();
 
     printf("All %d layer tests passed.\n", tests_run);
     return 0;

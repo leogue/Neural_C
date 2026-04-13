@@ -8,7 +8,6 @@
 #include <stdlib.h>
 
 
-
 Matrix *matrix_create(uint32_t rows, uint32_t cols) {
     if (rows == 0 || cols == 0) return NULL;
 
@@ -161,6 +160,52 @@ int matrix_add(Matrix *A, Matrix *B, Matrix *out) {
     return -4; // Incompatible dimensions.
 }
 
+
+
+int matrix_sub(Matrix *A, Matrix *B, Matrix *out) {
+    if (!A || !B || !out) return -1;
+
+    // Standard addition for matrices with identical shapes.
+    if (A->rows == B->rows && A->cols == B->cols) {
+        if (out->rows != A->rows || out->cols != A->cols) return -2;
+
+        for (size_t i = 0; i < A->rows * A->cols; i++) {
+            out->data[i] = A->data[i] - B->data[i];
+        }
+        return 0;
+    }
+
+    // Broadcasting case: add a column vector B to every column of A.
+    if (A->rows == B->rows && B->cols == 1) {
+        if (out->rows != A->rows || out->cols != A->cols) return -3;
+
+        for (uint32_t i = 0; i < A->rows; i++) {
+            for (uint32_t j = 0; j < A->cols; j++) {
+                out->data[i * A->cols + j] = A->data[i * A->cols + j] - B->data[i];
+            }
+        }
+        return 0;
+    }
+
+    return -4; // Incompatible dimensions.
+}
+
+
+int matrix_add_scaled(Matrix *A, Matrix *B, float scalar, Matrix *out) {
+    // A + xB
+
+    if (!A || !B || !out) return -1;
+    // TODO : add size check
+
+    for (size_t i=0; i<out->rows; ++i) {
+        for (size_t j=0; j<out->cols; ++j) {
+            out->data[i * out->cols + j] = A->data[i * out->cols + j] + scalar * B->data[i * out->cols + j];
+        }
+    }
+
+    return 0;
+
+}
 
 void matrix_print(Matrix *m) {
     if (!m) {
