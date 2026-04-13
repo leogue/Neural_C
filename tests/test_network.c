@@ -33,6 +33,57 @@ static void assert_float_close(float actual, float expected, const char *message
     }
 }
 
+// ============ Loss function tests ============
+
+static void test_get_loss_mse_returns_valid_functions(void) {
+    LossPair mse = get_loss(MSE);
+
+    ASSERT_TRUE(mse.loss_func != NULL, "MSE loss_func should exist");
+    ASSERT_TRUE(mse.loss_derivative != NULL, "MSE loss_derivative should exist");
+
+    // MSE: 0.5 * (a - y)^2
+    // For a=1, y=0: loss = 0.5 * 1 = 0.5
+    assert_float_close(mse.loss_func(1.0f, 0.0f), 0.5f, "MSE loss should be 0.5*(a-y)^2");
+
+    // MSE derivative: a - y
+    assert_float_close(mse.loss_derivative(1.0f, 0.0f), 1.0f, "MSE derivative should be a-y");
+    assert_float_close(mse.loss_derivative(0.5f, 0.5f), 0.0f, "MSE derivative should be 0 when a=y");
+
+    tests_run++;
+}
+
+static void test_get_loss_log_loss_returns_valid_functions(void) {
+    LossPair log_loss = get_loss(LOG_LOSS);
+
+    ASSERT_TRUE(log_loss.loss_func != NULL, "LOG_LOSS loss_func should exist");
+    ASSERT_TRUE(log_loss.loss_derivative != NULL, "LOG_LOSS loss_derivative should exist");
+
+    // Log loss: -[y*ln(a) + (1-y)*ln(1-a)]
+    // For a=0.5, y=1: loss = -ln(0.5) = ln(2) ≈ 0.693
+    float loss_val = log_loss.loss_func(0.5f, 1.0f);
+    ASSERT_TRUE(loss_val > 0.69f && loss_val < 0.70f, "LOG_LOSS should compute -y*ln(a)");
+
+    // Log loss derivative: (a - y) / (a * (1 - a))
+    // For a=0.5, y=0: deriv = 0.5 / 0.25 = 2
+    float deriv_val = log_loss.loss_derivative(0.5f, 0.0f);
+    assert_float_close(deriv_val, 2.0f, "LOG_LOSS derivative should be (a-y)/(a*(1-a))");
+
+    tests_run++;
+}
+
+static void test_get_loss_default_is_mse(void) {
+    LossPair default_loss = get_loss(MSE);
+    LossPair explicit_mse = get_loss(MSE);
+
+    // Both should return the same functions
+    assert_float_close(default_loss.loss_func(0.7f, 0.3f), explicit_mse.loss_func(0.7f, 0.3f),
+                       "default loss should be MSE");
+    assert_float_close(default_loss.loss_derivative(0.7f, 0.3f), explicit_mse.loss_derivative(0.7f, 0.3f),
+                       "default loss derivative should be MSE");
+
+    tests_run++;
+}
+
 static void test_network_create_initializes_all_layers(void) {
     uint32_t sizes[] = {3, 4, 2};
     ActivationType types[] = {RELU, SIGMOID};
@@ -48,6 +99,8 @@ static void test_network_create_initializes_all_layers(void) {
     ASSERT_INT_EQ((int)net->layers[0]->out_size, 4, "first layer out_size should match");
     ASSERT_INT_EQ((int)net->layers[1]->in_size, 4, "second layer in_size should match");
     ASSERT_INT_EQ((int)net->layers[1]->out_size, 2, "second layer out_size should match");
+
+    ASSERT_INT_EQ((int)net->loss_type, (int)MSE, "loss_type should default to MSE");
 
     network_free(&net);
     ASSERT_TRUE(net == NULL, "network_free should null the pointer");
@@ -321,7 +374,7 @@ static void test_network_update_applies_gradient_descent(void) {
     tests_run++;
 }
 
-static void test_network_training_reduces_loss(void) {
+static void test_network_training_reduces_loss_mse(void) {
     uint32_t sizes[] = {2, 4, 1};
     ActivationType types[] = {RELU, SIGMOID};
     Network *net = network_create(sizes, 3, types);
@@ -333,6 +386,7 @@ static void test_network_training_reduces_loss(void) {
     float lr = 0.5f;
 
     ASSERT_TRUE(net != NULL, "network_create should succeed");
+    ASSERT_INT_EQ((int)net->loss_type, (int)MSE, "loss_type should be MSE");
 
     srand(42);
     input->data[0] = 1.0f;
@@ -354,7 +408,90 @@ static void test_network_training_reduces_loss(void) {
     output = network_predict(net, input);
     final_loss = (output->data[0] - target->data[0]) * (output->data[0] - target->data[0]);
 
-    ASSERT_TRUE(final_loss < initial_loss, "training should reduce loss");
+    ASSERT_TRUE(final_loss < initial_loss, "training with MSE should reduce loss");
+
+    matrix_free(&input);
+    matrix_free(&target);
+    network_free(&net);
+    tests_run++;
+}
+
+static void test_network_training_reduces_loss_log_loss(void) {
+    uint32_t sizes[] = {2, 4, 1};
+    ActivationType types[] = {RELU, SIGMOID};
+    Network *net = network_create(sizes, 3, types);
+    Matrix *input = matrix_create(2, 1);
+    Matrix *target = matrix_create(1, 1);
+    Matrix *output;
+    LossPair loss_pair;
+    float initial_loss;
+    float final_loss;
+    float lr = 0.5f;
+
+    ASSERT_TRUE(net != NULL, "network_create should succeed");
+
+    // Set loss type to LOG_LOSS
+    net->loss_type = LOG_LOSS;
+    loss_pair = get_loss(LOG_LOSS);
+
+    srand(42);
+    input->data[0] = 1.0f;
+    input->data[1] = 0.0f;
+    target->data[0] = 1.0f;
+
+    // Compute initial loss
+    output = network_predict(net, input);
+    initial_loss = loss_pair.loss_func(output->data[0], target->data[0]);
+
+    // Train for several iterations
+    for (int i = 0; i < 100; ++i) {
+        network_predict(net, input);
+        network_backward(net, input, target);
+        network_update(net, lr);
+    }
+
+    // Compute final loss
+    output = network_predict(net, input);
+    final_loss = loss_pair.loss_func(output->data[0], target->data[0]);
+
+    ASSERT_TRUE(final_loss < initial_loss, "training with LOG_LOSS should reduce loss");
+
+    matrix_free(&input);
+    matrix_free(&target);
+    network_free(&net);
+    tests_run++;
+}
+
+static void test_network_backward_uses_log_loss_derivative(void) {
+    uint32_t sizes[] = {1, 1};
+    ActivationType types[] = {SIGMOID};
+    Network *net = network_create(sizes, 2, types);
+    Matrix *input = matrix_create(1, 1);
+    Matrix *target = matrix_create(1, 1);
+    Layer *layer;
+    float a, expected_delta;
+
+    ASSERT_TRUE(net != NULL, "network_create should succeed");
+
+    net->loss_type = LOG_LOSS;
+
+    layer = net->layers[0];
+    layer->W->data[0] = 0.0f;
+    layer->B->data[0] = 0.0f;
+    input->data[0] = 1.0f;
+    target->data[0] = 1.0f;
+
+    network_predict(net, input);
+    ASSERT_INT_EQ(network_backward(net, input, target), 0, "network_backward should succeed");
+
+    // With W=0, B=0: Z=0, A=sigmoid(0)=0.5
+    // Log loss derivative: (a - y) / (a * (1 - a)) = (0.5 - 1) / 0.25 = -2
+    // delta = loss_deriv * sigmoid'(a) = -2 * 0.25 = -0.5
+    a = layer->A->data[0];
+    assert_float_close(a, 0.5f, "activation should be 0.5");
+
+    expected_delta = ((a - 1.0f) / (a * (1.0f - a) + 1e-7f)) * (a * (1.0f - a));
+    assert_float_close(layer->delta->data[0], expected_delta, "delta should use log loss derivative");
 
     matrix_free(&input);
     matrix_free(&target);
@@ -363,6 +500,11 @@ static void test_network_training_reduces_loss(void) {
 }
 
 int main(void) {
+    // Loss function tests
+    test_get_loss_mse_returns_valid_functions();
+    test_get_loss_log_loss_returns_valid_functions();
+    test_get_loss_default_is_mse();
+
     // network_create tests
     test_network_create_initializes_all_layers();
     test_network_create_rejects_null_sizes();
@@ -384,13 +526,15 @@ int main(void) {
     test_network_backward_rejects_null_target();
     test_network_backward_computes_output_gradients();
     test_network_backward_propagates_to_hidden_layer();
+    test_network_backward_uses_log_loss_derivative();
 
     // network_update tests
     test_network_update_rejects_null_network();
     test_network_update_applies_gradient_descent();
 
-    // Integration test
-    test_network_training_reduces_loss();
+    // Integration tests
+    test_network_training_reduces_loss_mse();
+    test_network_training_reduces_loss_log_loss();
 
     printf("All %d network tests passed.\n", tests_run);
     return 0;

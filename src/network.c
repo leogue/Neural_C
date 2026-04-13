@@ -4,7 +4,36 @@
 
 #include "network.h"
 
+#include <math.h>
 #include <stdlib.h>
+
+
+// MSE: 0.5 * (a - y)^2
+static float mse_forward(float a, float y) {
+    return 0.5f * (a - y) * (a - y);
+}
+static float mse_derivative(float a, float y) {
+    return a - y;
+}
+
+// Log Loss: -[y*ln(a) + (1-y)*ln(1-a)]
+static float log_loss_forward(float a, float y) {
+    return -(y * logf(a + 1e-7f) + (1.0f - y) * logf(1.0f - a + 1e-7f));
+}
+static float log_loss_derivative(float a, float y) {
+    return (a - y) / ((a * (1.0f - a)) + 1e-7f);
+}
+
+LossPair get_loss(LossType type) {
+    switch (type) {
+        case LOG_LOSS:
+            return (LossPair){log_loss_forward, log_loss_derivative};
+        case MSE:
+        default:
+            return (LossPair){mse_forward, mse_derivative};
+    }
+}
+
 
 Network *network_create(uint32_t *sizes, uint32_t count, ActivationType *types) {
     if (!sizes || !types || count < 2) return NULL;
@@ -30,6 +59,8 @@ Network *network_create(uint32_t *sizes, uint32_t count, ActivationType *types) 
             return NULL;
         }
     }
+
+    net->loss_type = MSE;
 
     return net;
 }
@@ -61,9 +92,13 @@ Matrix *network_predict(Network *net, Matrix *input) {
 int network_backward(Network *net, Matrix *input, Matrix *target) {
     if (!net || !input || !target || !net->layers || net->layer_count == 0) return -1;
 
+    LossPair loss = get_loss(net->loss_type);
+
     // Output layer gradient: delta = (A - target) * activation'(A)
     Layer *output = net->layers[net->layer_count - 1];
-    matrix_sub(output->A, target, output->delta);
+    for (uint32_t i = 0; i < output->out_size; i++) {
+        output->delta->data[i] = loss.loss_derivative(output->A->data[i], target->data[i]);
+    }
     matrix_apply(output->A, output->activation_prime, output->dZ);
     matrix_hadamard(output->delta, output->dZ, output->delta);
 
