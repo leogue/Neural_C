@@ -2,30 +2,37 @@
 // Created by Leo Guerin on 13/04/2026.
 //
 
-#include <stdlib.h>
 #include "network.h"
 
+#include <stdlib.h>
 
 Network *network_create(uint32_t *sizes, uint32_t count, ActivationType *types) {
-    Network *n = malloc(sizeof(Network));
-    if (!n) return NULL;
+    if (!sizes || !types || count < 2) return NULL;
 
-    n->layer_count = count - 1;
+    Network *net = malloc(sizeof(Network));
+    if (!net) return NULL;
 
-    n->layers = malloc(n->layer_count * sizeof(Layer *));
-    if (!n->layers) {
-        free(n);
+    net->layer_count = count - 1;
+    net->layers = malloc(net->layer_count * sizeof(Layer *));
+    if (!net->layers) {
+        free(net);
         return NULL;
     }
 
-    for (size_t i = 0; i < n->layer_count; ++i) {
-        n->layers[i] = layer_create(sizes[i], sizes[i + 1], types[i]);
+    for (uint32_t i = 0; i < net->layer_count; ++i) {
+        net->layers[i] = layer_create(sizes[i], sizes[i + 1], types[i]);
+        if (!net->layers[i]) {
+            for (uint32_t j = 0; j < i; ++j) {
+                layer_free(&net->layers[j]);
+            }
+            free(net->layers);
+            free(net);
+            return NULL;
+        }
     }
 
-
-    return n;
+    return net;
 }
-
 
 void network_free(Network **net) {
     if (!net || !*net) return;
@@ -35,57 +42,65 @@ void network_free(Network **net) {
     }
 
     free((*net)->layers);
-
     free(*net);
-
     *net = NULL;
 }
 
-
 Matrix *network_predict(Network *net, Matrix *input) {
-    Matrix *current_input = input;
+    if (!net || !input || !net->layers) return NULL;
 
-    for (size_t i = 0; i < net->layer_count; ++i) {
-        layer_forward(net->layers[i], current_input);
-        current_input = net->layers[i]->A;
+    Matrix *current = input;
+    for (uint32_t i = 0; i < net->layer_count; ++i) {
+        if (layer_forward(net->layers[i], current) != 0) return NULL;
+        current = net->layers[i]->A;
     }
 
-    return current_input;
+    return current;
 }
 
+int network_backward(Network *net, Matrix *input, Matrix *target) {
+    if (!net || !input || !target || !net->layers || net->layer_count == 0) return -1;
 
-void network_backward(Network *net, Matrix *input, Matrix *target) {
-    Layer *out_l = net->layers[net->layer_count - 1];
+    // Output layer gradient: delta = (A - target) * activation'(A)
+    Layer *output = net->layers[net->layer_count - 1];
+    matrix_sub(output->A, target, output->delta);
+    matrix_apply(output->A, output->activation_prime, output->dZ);
+    matrix_hadamard(output->delta, output->dZ, output->delta);
 
-    matrix_sub(out_l->A, target, out_l->delta);
-    matrix_apply(out_l->A, out_l->activation_prime, out_l->dZ);
-    matrix_hadamard(out_l->delta, out_l->dZ, out_l->delta);
+    // Backpropagate through all layers
+    for (int i = (int)net->layer_count - 1; i >= 0; --i) {
+        Layer *layer = net->layers[i];
 
+        // dB = delta
+        matrix_fill(layer->dB, 0.0f);
+        matrix_add(layer->dB, layer->delta, layer->dB);
 
-    for (int i = net->layer_count - 1; i >= 0; --i) {
-        Layer *l = net->layers[i];
+        // dW = delta * prev_A^T
+        Matrix *prev_activation = (i == 0) ? input : net->layers[i - 1]->A;
+        matrix_dot(layer->delta, 0, prev_activation, 1, layer->dW);
 
-        matrix_fill(l->dB, 0);
-        matrix_add(l->dB, l->delta, l->dB);
-
-        Matrix *prev_A = (i == 0) ? input : net->layers[i - 1]->A;
-        matrix_dot(l->delta, 0, prev_A, 1, l->dW);
-
+        // Propagate error to previous layer
         if (i > 0) {
-            Layer *prev_l = net->layers[i - 1];
-            matrix_dot(l->W, 1, l->delta, 0, prev_l->delta);
-            matrix_apply(prev_l->A, prev_l->activation_prime, prev_l->dZ);
-            matrix_hadamard(prev_l->delta, prev_l->dZ, prev_l->delta);
+            Layer *prev = net->layers[i - 1];
+            matrix_dot(layer->W, 1, layer->delta, 0, prev->delta);
+            matrix_apply(prev->A, prev->activation_prime, prev->dZ);
+            matrix_hadamard(prev->delta, prev->dZ, prev->delta);
         }
     }
+
+    return 0;
 }
 
+int network_update(Network *net, float lr) {
+    if (!net || !net->layers) return -1;
 
-void network_update(Network *net, float lr) {
-    for (size_t i = 0; i < net->layer_count; ++i) {
-        Layer *l = net->layers[i];
-
-        matrix_add_scaled(l->W, l->dW, -lr, l->W);
-        matrix_add_scaled(l->B, l->dB, -lr, l->B);
+    // W = W - lr * dW
+    // B = B - lr * dB
+    for (uint32_t i = 0; i < net->layer_count; ++i) {
+        Layer *layer = net->layers[i];
+        matrix_add_scaled(layer->W, layer->dW, -lr, layer->W);
+        matrix_add_scaled(layer->B, layer->dB, -lr, layer->B);
     }
+
+    return 0;
 }

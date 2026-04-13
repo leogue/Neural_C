@@ -313,7 +313,151 @@ static void test_network_backward_uses_activation_output_for_hidden_tanh_derivat
     tests_run++;
 }
 
+static void test_network_create_initializes_all_layers(void) {
+    uint32_t sizes[] = {3, 4, 2};
+    ActivationType types[] = {RELU, SIGMOID};
+    Network *net = network_create(sizes, 3, types);
+
+    ASSERT_TRUE(net != NULL, "network_create should succeed");
+    ASSERT_INT_EQ((int)net->layer_count, 2, "layer_count should be count - 1");
+    ASSERT_TRUE(net->layers != NULL, "layers array should be allocated");
+    ASSERT_TRUE(net->layers[0] != NULL, "first layer should be allocated");
+    ASSERT_TRUE(net->layers[1] != NULL, "second layer should be allocated");
+
+    ASSERT_INT_EQ((int)net->layers[0]->in_size, 3, "first layer in_size should match");
+    ASSERT_INT_EQ((int)net->layers[0]->out_size, 4, "first layer out_size should match");
+    ASSERT_INT_EQ((int)net->layers[1]->in_size, 4, "second layer in_size should match");
+    ASSERT_INT_EQ((int)net->layers[1]->out_size, 2, "second layer out_size should match");
+
+    network_free(&net);
+    ASSERT_TRUE(net == NULL, "network_free should null the pointer");
+    tests_run++;
+}
+
+static void test_network_create_rejects_invalid_parameters(void) {
+    uint32_t sizes[] = {2, 3};
+    ActivationType types[] = {SIGMOID};
+
+    ASSERT_TRUE(network_create(NULL, 2, types) == NULL, "network_create should reject NULL sizes");
+    ASSERT_TRUE(network_create(sizes, 2, NULL) == NULL, "network_create should reject NULL types");
+    ASSERT_TRUE(network_create(sizes, 1, types) == NULL, "network_create should reject count < 2");
+    ASSERT_TRUE(network_create(sizes, 0, types) == NULL, "network_create should reject count = 0");
+    tests_run++;
+}
+
+static void test_network_free_is_null_safe(void) {
+    Network *net = NULL;
+    network_free(&net);
+    network_free(NULL);
+    tests_run++;
+}
+
+static void test_network_predict_rejects_null_arguments(void) {
+    uint32_t sizes[] = {2, 2};
+    ActivationType types[] = {SIGMOID};
+    Network *net = network_create(sizes, 2, types);
+    Matrix *input = matrix_create(2, 1);
+
+    ASSERT_TRUE(net != NULL, "network_create should succeed");
+    ASSERT_TRUE(input != NULL, "matrix_create should succeed");
+
+    ASSERT_TRUE(network_predict(NULL, input) == NULL, "network_predict should reject NULL network");
+    ASSERT_TRUE(network_predict(net, NULL) == NULL, "network_predict should reject NULL input");
+
+    matrix_free(&input);
+    network_free(&net);
+    tests_run++;
+}
+
+static void test_network_predict_returns_last_layer_activation(void) {
+    uint32_t sizes[] = {2, 3, 1};
+    ActivationType types[] = {RELU, SIGMOID};
+    Network *net = network_create(sizes, 3, types);
+    Matrix *input = matrix_create(2, 1);
+    Matrix *output;
+
+    ASSERT_TRUE(net != NULL, "network_create should succeed");
+    ASSERT_TRUE(input != NULL, "matrix_create should succeed");
+
+    input->data[0] = 1.0f;
+    input->data[1] = 2.0f;
+
+    output = network_predict(net, input);
+    ASSERT_TRUE(output != NULL, "network_predict should return a matrix");
+    ASSERT_TRUE(output == net->layers[1]->A, "network_predict should return last layer activation");
+
+    matrix_free(&input);
+    network_free(&net);
+    tests_run++;
+}
+
+static void test_network_backward_rejects_null_arguments(void) {
+    uint32_t sizes[] = {2, 2};
+    ActivationType types[] = {SIGMOID};
+    Network *net = network_create(sizes, 2, types);
+    Matrix *input = matrix_create(2, 1);
+    Matrix *target = matrix_create(2, 1);
+
+    ASSERT_TRUE(net != NULL, "network_create should succeed");
+
+    ASSERT_INT_EQ(network_backward(NULL, input, target), -1, "network_backward should reject NULL network");
+    ASSERT_INT_EQ(network_backward(net, NULL, target), -1, "network_backward should reject NULL input");
+    ASSERT_INT_EQ(network_backward(net, input, NULL), -1, "network_backward should reject NULL target");
+
+    matrix_free(&input);
+    matrix_free(&target);
+    network_free(&net);
+    tests_run++;
+}
+
+static void test_network_update_applies_gradient_descent(void) {
+    uint32_t sizes[] = {1, 1};
+    ActivationType types[] = {SIGMOID};
+    Network *net = network_create(sizes, 2, types);
+    Matrix *input = matrix_create(1, 1);
+    Matrix *target = matrix_create(1, 1);
+    float initial_w;
+    float initial_b;
+    float lr = 0.1f;
+
+    ASSERT_TRUE(net != NULL, "network_create should succeed");
+
+    Layer *layer = net->layers[0];
+    layer->W->data[0] = 0.5f;
+    layer->B->data[0] = 0.1f;
+    initial_w = layer->W->data[0];
+    initial_b = layer->B->data[0];
+
+    input->data[0] = 1.0f;
+    target->data[0] = 1.0f;
+
+    network_predict(net, input);
+    network_backward(net, input, target);
+    ASSERT_INT_EQ(network_update(net, lr), 0, "network_update should succeed");
+
+    // W and B should have changed
+    ASSERT_TRUE(fabsf(layer->W->data[0] - initial_w) > FLOAT_TOL, "weights should be updated");
+    ASSERT_TRUE(fabsf(layer->B->data[0] - initial_b) > FLOAT_TOL, "biases should be updated");
+
+    // Verify gradient descent formula: W = W - lr * dW
+    float expected_w = initial_w - lr * layer->dW->data[0];
+    float expected_b = initial_b - lr * layer->dB->data[0];
+    assert_float_close(layer->W->data[0], expected_w, "weight update should follow gradient descent");
+    assert_float_close(layer->B->data[0], expected_b, "bias update should follow gradient descent");
+
+    matrix_free(&input);
+    matrix_free(&target);
+    network_free(&net);
+    tests_run++;
+}
+
+static void test_network_update_rejects_null_arguments(void) {
+    ASSERT_INT_EQ(network_update(NULL, 0.1f), -1, "network_update should reject NULL network");
+    tests_run++;
+}
+
 int main(void) {
+    // Layer tests
     test_get_activation_supports_all_declared_types();
     test_activation_derivatives_match_expected_values();
     test_layer_create_initializes_all_fields();
@@ -325,9 +469,19 @@ int main(void) {
     test_layer_forward_rejects_invalid_input_columns();
     test_layer_forward_rejects_null_arguments();
     test_layer_free_is_null_safe();
+
+    // Network tests
+    test_network_create_initializes_all_layers();
+    test_network_create_rejects_invalid_parameters();
+    test_network_free_is_null_safe();
+    test_network_predict_rejects_null_arguments();
+    test_network_predict_returns_last_layer_activation();
+    test_network_backward_rejects_null_arguments();
     test_network_backward_uses_activation_output_for_sigmoid_derivative();
     test_network_backward_uses_activation_output_for_hidden_tanh_derivative();
+    test_network_update_applies_gradient_descent();
+    test_network_update_rejects_null_arguments();
 
-    printf("All %d layer tests passed.\n", tests_run);
+    printf("All %d layer/network tests passed.\n", tests_run);
     return 0;
 }

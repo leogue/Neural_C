@@ -30,10 +30,22 @@ add_executable(LayerTests
         include/network.h
         src/network.c)
 
+add_executable(NetworkTests
+        tests/test_network.c
+        src/matrix.c
+        src/layer.c
+        src/network.c
+        include/matrix.h
+        include/layer.h
+        include/network.h)
+
 target_include_directories(NeuralTests PRIVATE include)
 target_link_libraries(NeuralTests PRIVATE m)
 target_include_directories(LayerTests PRIVATE include)
 target_link_libraries(LayerTests PRIVATE m)
+target_include_directories(NetworkTests PRIVATE include)
+target_link_libraries(NetworkTests PRIVATE m)
 
 add_test(NAME NeuralTests COMMAND NeuralTests)
 add_test(NAME LayerTests COMMAND LayerTests)
+add_test(NAME NetworkTests COMMAND NetworkTests)

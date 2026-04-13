@@ -273,6 +273,130 @@ static void test_matrix_add_rejects_invalid_shapes(void) {
     tests_run++;
 }
 
+static void test_matrix_sub_standard(void) {
+    const float a_values[] = {5, 6, 7, 8};
+    const float b_values[] = {1, 2, 3, 4};
+    const float expected[] = {4, 4, 4, 4};
+
+    Matrix *a = create_matrix_from_array(2, 2, a_values);
+    Matrix *b = create_matrix_from_array(2, 2, b_values);
+    Matrix *out = matrix_create(2, 2);
+
+    ASSERT_INT_EQ(matrix_sub(a, b, out), 0, "matrix_sub should succeed");
+    assert_matrix_equals(out, expected, 4, "matrix_sub standard subtraction is incorrect");
+
+    matrix_free(&a);
+    matrix_free(&b);
+    matrix_free(&out);
+    tests_run++;
+}
+
+static void test_matrix_sub_broadcast_column_vector(void) {
+    const float a_values[] = {10, 20, 30, 40, 50, 60};
+    const float b_values[] = {5, 10};
+    const float expected[] = {5, 15, 25, 30, 40, 50};
+
+    Matrix *a = create_matrix_from_array(2, 3, a_values);
+    Matrix *b = create_matrix_from_array(2, 1, b_values);
+    Matrix *out = matrix_create(2, 3);
+
+    ASSERT_INT_EQ(matrix_sub(a, b, out), 0, "matrix_sub should support column broadcasting");
+    assert_matrix_equals(out, expected, 6, "matrix_sub broadcast result is incorrect");
+
+    matrix_free(&a);
+    matrix_free(&b);
+    matrix_free(&out);
+    tests_run++;
+}
+
+static void test_matrix_sub_rejects_invalid_shapes(void) {
+    Matrix *a = matrix_create(2, 3);
+    Matrix *b = matrix_create(3, 1);
+    Matrix *out = matrix_create(2, 3);
+
+    ASSERT_INT_EQ(matrix_sub(a, b, out), -4, "matrix_sub should reject unsupported broadcasting");
+    ASSERT_INT_EQ(matrix_sub(NULL, b, out), -1, "matrix_sub should reject NULL input");
+
+    matrix_free(&a);
+    matrix_free(&b);
+    matrix_free(&out);
+    tests_run++;
+}
+
+static void test_matrix_add_scaled_basic(void) {
+    const float a_values[] = {1, 2, 3, 4};
+    const float b_values[] = {2, 4, 6, 8};
+    const float expected[] = {5, 10, 15, 20};  // a + 2 * b
+
+    Matrix *a = create_matrix_from_array(2, 2, a_values);
+    Matrix *b = create_matrix_from_array(2, 2, b_values);
+    Matrix *out = matrix_create(2, 2);
+
+    ASSERT_INT_EQ(matrix_add_scaled(a, b, 2.0f, out), 0, "matrix_add_scaled should succeed");
+    assert_matrix_equals(out, expected, 4, "matrix_add_scaled result is incorrect");
+
+    matrix_free(&a);
+    matrix_free(&b);
+    matrix_free(&out);
+    tests_run++;
+}
+
+static void test_matrix_add_scaled_negative_scalar(void) {
+    const float a_values[] = {10, 20, 30, 40};
+    const float b_values[] = {1, 2, 3, 4};
+    const float expected[] = {9, 18, 27, 36};  // a + (-1) * b = a - b
+
+    Matrix *a = create_matrix_from_array(2, 2, a_values);
+    Matrix *b = create_matrix_from_array(2, 2, b_values);
+    Matrix *out = matrix_create(2, 2);
+
+    ASSERT_INT_EQ(matrix_add_scaled(a, b, -1.0f, out), 0, "matrix_add_scaled should work with negative scalar");
+    assert_matrix_equals(out, expected, 4, "matrix_add_scaled with negative scalar is incorrect");
+
+    matrix_free(&a);
+    matrix_free(&b);
+    matrix_free(&out);
+    tests_run++;
+}
+
+static void test_matrix_add_scaled_rejects_invalid_shapes(void) {
+    Matrix *a = matrix_create(2, 2);
+    Matrix *b = matrix_create(2, 3);
+    Matrix *out = matrix_create(2, 2);
+
+    ASSERT_INT_EQ(matrix_add_scaled(a, b, 1.0f, out), -2, "matrix_add_scaled should reject mismatched a/b shapes");
+    ASSERT_INT_EQ(matrix_add_scaled(NULL, b, 1.0f, out), -1, "matrix_add_scaled should reject NULL input");
+
+    matrix_free(&a);
+    matrix_free(&b);
+    matrix_free(&out);
+    tests_run++;
+}
+
+static void test_matrix_add_scaled_rejects_invalid_output_shape(void) {
+    Matrix *a = matrix_create(2, 2);
+    Matrix *b = matrix_create(2, 2);
+    Matrix *out = matrix_create(3, 2);
+
+    ASSERT_INT_EQ(matrix_add_scaled(a, b, 1.0f, out), -3, "matrix_add_scaled should reject mismatched output shape");
+
+    matrix_free(&a);
+    matrix_free(&b);
+    matrix_free(&out);
+    tests_run++;
+}
+
+static void test_matrix_apply_rejects_null_function(void) {
+    Matrix *a = matrix_create(2, 2);
+    Matrix *out = matrix_create(2, 2);
+
+    ASSERT_INT_EQ(matrix_apply(a, NULL, out), -1, "matrix_apply should reject NULL function");
+
+    matrix_free(&a);
+    matrix_free(&out);
+    tests_run++;
+}
+
 static void test_matrix_print_output(void) {
     const float values[] = {1.0f, 2.5f, -3.0f, 4.25f};
     char buffer[256];
@@ -321,10 +445,18 @@ int main(void) {
     test_matrix_hadamard_rejects_invalid_shapes();
     test_matrix_apply();
     test_matrix_apply_rejects_invalid_shapes();
+    test_matrix_apply_rejects_null_function();
     test_matrix_randomize_range();
     test_matrix_add_standard();
     test_matrix_add_broadcast_column_vector();
     test_matrix_add_rejects_invalid_shapes();
+    test_matrix_sub_standard();
+    test_matrix_sub_broadcast_column_vector();
+    test_matrix_sub_rejects_invalid_shapes();
+    test_matrix_add_scaled_basic();
+    test_matrix_add_scaled_negative_scalar();
+    test_matrix_add_scaled_rejects_invalid_shapes();
+    test_matrix_add_scaled_rejects_invalid_output_shape();
     test_matrix_print_output();
     test_matrix_print_null();
 

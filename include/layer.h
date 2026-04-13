@@ -4,9 +4,9 @@
 
 #ifndef NEURAL_C_LAYER_H
 #define NEURAL_C_LAYER_H
+
 #include <stdint.h>
 #include "matrix.h"
-
 
 typedef enum {
     SIGMOID,
@@ -14,35 +14,32 @@ typedef enum {
     TANH
 } ActivationType;
 
-
 typedef struct {
     float (*forward)(float);
     float (*derivative)(float);
 } ActivationPair;
 
-
 typedef struct {
-    uint32_t in_size;  // input size
-    uint32_t out_size; // neurone number
+    uint32_t in_size;   // input size
+    uint32_t out_size;  // output size (number of neurons)
 
-    Matrix* W;   // weight matrix
-    Matrix* B;   // bias matrix
-    Matrix* Z;   // Z = W.X+B
-    Matrix* A;   // activation matrix
+    Matrix *W;      // weights
+    Matrix *B;      // biases
+    Matrix *Z;      // pre-activation: Z = W * X + B
+    Matrix *A;      // activation: A = f(Z)
 
-    Matrix* dW;
-    Matrix* dB;
-    Matrix* dZ;
-    Matrix* delta;
+    Matrix *dW;     // weight gradients
+    Matrix *dB;     // bias gradients
+    Matrix *dZ;     // activation derivative
+    Matrix *delta;  // error term for backpropagation
 
     float (*activation)(float);
     float (*activation_prime)(float);
-
 } Layer;
 
-Layer* layer_create(uint32_t in_size, uint32_t out_size, ActivationType activation_type);
-int layer_forward(Layer *l, Matrix *input);
-void layer_free(Layer **l);
+Layer *layer_create(uint32_t in_size, uint32_t out_size, ActivationType type);
+void layer_free(Layer **layer);
+int layer_forward(Layer *layer, Matrix *input);
 
 ActivationPair get_activation(ActivationType type);
 

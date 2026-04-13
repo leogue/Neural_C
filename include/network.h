@@ -9,14 +9,15 @@
 #include "layer.h"
 
 typedef struct {
-    Layer** layers;
+    Layer **layers;
     uint32_t layer_count;
 } Network;
 
-Network* network_create(uint32_t *sizes, uint32_t count, ActivationType *types);
-Matrix* network_predict(Network *net, Matrix *input);
+Network *network_create(uint32_t *sizes, uint32_t count, ActivationType *types);
 void network_free(Network **net);
-void network_backward(Network *net, Matrix *input, Matrix *target);
-void network_update(Network *net, float lr);
+
+Matrix *network_predict(Network *net, Matrix *input);
+int network_backward(Network *net, Matrix *input, Matrix *target);
+int network_update(Network *net, float lr);
 
 #endif //NEURAL_C_NETWORK_H
