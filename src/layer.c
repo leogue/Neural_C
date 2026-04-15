@@ -45,8 +45,8 @@ ActivationPair get_activation(ActivationType type) {
     }
 }
 
-Layer *layer_create(uint32_t in_size, uint32_t out_size, ActivationType type) {
-    if (in_size == 0 || out_size == 0) return NULL;
+Layer *layer_create(uint32_t in_size, uint32_t out_size, uint32_t batch_size, ActivationType type) {
+    if (in_size == 0 || out_size == 0 || batch_size == 0) return NULL;
 
     Layer *layer = malloc(sizeof(Layer));
     if (!layer) return NULL;
@@ -54,6 +54,7 @@ Layer *layer_create(uint32_t in_size, uint32_t out_size, ActivationType type) {
     *layer = (Layer){0};
     layer->in_size = in_size;
     layer->out_size = out_size;
+    layer->batch_size = batch_size;
 
     // Weights and biases
     layer->W = matrix_create(out_size, in_size);
@@ -65,11 +66,11 @@ Layer *layer_create(uint32_t in_size, uint32_t out_size, ActivationType type) {
     if (matrix_randomize(layer->B) != 0) { layer_free(&layer); return NULL; }
 
     // Forward pass storage
-    layer->Z = matrix_create(out_size, 1);
+    layer->Z = matrix_create(out_size, layer->batch_size);
     if (!layer->Z) { layer_free(&layer); return NULL; }
     if (matrix_fill(layer->Z, 0.0f) != 0) { layer_free(&layer); return NULL; }
 
-    layer->A = matrix_create(out_size, 1);
+    layer->A = matrix_create(out_size, layer->batch_size);
     if (!layer->A) { layer_free(&layer); return NULL; }
     if (matrix_fill(layer->A, 0.0f) != 0) { layer_free(&layer); return NULL; }
 
@@ -80,10 +81,10 @@ Layer *layer_create(uint32_t in_size, uint32_t out_size, ActivationType type) {
     layer->dB = matrix_create(out_size, 1);
     if (!layer->dB) { layer_free(&layer); return NULL; }
 
-    layer->dZ = matrix_create(out_size, 1);
+    layer->dZ = matrix_create(out_size, layer->batch_size);
     if (!layer->dZ) { layer_free(&layer); return NULL; }
 
-    layer->delta = matrix_create(out_size, 1);
+    layer->delta = matrix_create(out_size, layer->batch_size);
     if (!layer->delta) { layer_free(&layer); return NULL; }
 
     // Activation functions
@@ -113,7 +114,7 @@ void layer_free(Layer **layer) {
 int layer_forward(Layer *layer, Matrix *input) {
     if (!layer || !input) return -1;
     if (!layer->W || !layer->B || !layer->Z || !layer->A || !layer->activation) return -1;
-    if (input->rows != layer->in_size || input->cols != 1) return -1;
+    if (input->rows != layer->in_size || input->cols != layer->batch_size) return -1;
 
     // Z = W * input + B
     if (matrix_dot(layer->W, 0, input, 0, layer->Z) != 0) return -2;

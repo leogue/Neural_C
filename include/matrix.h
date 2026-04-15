@@ -21,6 +21,8 @@ int matrix_hadamard(Matrix *a, Matrix *b, Matrix *out);
 int matrix_add(Matrix *a, Matrix *b, Matrix *out);
 int matrix_sub(Matrix *a, Matrix *b, Matrix *out);
 int matrix_add_scaled(Matrix *a, Matrix *b, float scalar, Matrix *out);
+int matrix_scale(Matrix *a, float s);
+int matrix_sum_columns(Matrix *a, Matrix *out);
 
 int matrix_apply(Matrix *m, float (*fn)(float), Matrix *out);
 int matrix_fill(Matrix *m, float value);

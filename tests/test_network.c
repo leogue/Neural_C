@@ -87,7 +87,7 @@ static void test_get_loss_default_is_mse(void) {
 static void test_network_create_initializes_all_layers(void) {
     uint32_t sizes[] = {3, 4, 2};
     ActivationType types[] = {RELU, SIGMOID};
-    Network *net = network_create(sizes, 3, types);
+    Network *net = network_create(sizes, 3, 1, types);
 
     ASSERT_TRUE(net != NULL, "network_create should succeed");
     ASSERT_INT_EQ((int)net->layer_count, 2, "layer_count should be count - 1");
@@ -109,21 +109,22 @@ static void test_network_create_initializes_all_layers(void) {
 
 static void test_network_create_rejects_null_sizes(void) {
     ActivationType types[] = {SIGMOID};
-    ASSERT_TRUE(network_create(NULL, 2, types) == NULL, "network_create should reject NULL sizes");
+    ASSERT_TRUE(network_create(NULL, 2, 1, types) == NULL, "network_create should reject NULL sizes");
     tests_run++;
 }
 
 static void test_network_create_rejects_null_types(void) {
     uint32_t sizes[] = {2, 3};
-    ASSERT_TRUE(network_create(sizes, 2, NULL) == NULL, "network_create should reject NULL types");
+    ASSERT_TRUE(network_create(sizes, 2, 1, NULL) == NULL, "network_create should reject NULL types");
     tests_run++;
 }
 
 static void test_network_create_rejects_count_less_than_two(void) {
     uint32_t sizes[] = {2, 3};
     ActivationType types[] = {SIGMOID};
-    ASSERT_TRUE(network_create(sizes, 1, types) == NULL, "network_create should reject count < 2");
-    ASSERT_TRUE(network_create(sizes, 0, types) == NULL, "network_create should reject count = 0");
+    ASSERT_TRUE(network_create(sizes, 1, 1, types) == NULL, "network_create should reject count < 2");
+    ASSERT_TRUE(network_create(sizes, 0, 1, types) == NULL, "network_create should reject count = 0");
+    ASSERT_TRUE(network_create(sizes, 2, 0, types) == NULL, "network_create should reject zero batch size");
     tests_run++;
 }
 
@@ -145,7 +146,7 @@ static void test_network_predict_rejects_null_network(void) {
 static void test_network_predict_rejects_null_input(void) {
     uint32_t sizes[] = {2, 2};
     ActivationType types[] = {SIGMOID};
-    Network *net = network_create(sizes, 2, types);
+    Network *net = network_create(sizes, 2, 1, types);
     ASSERT_TRUE(net != NULL, "network_create should succeed");
     ASSERT_TRUE(network_predict(net, NULL) == NULL, "network_predict should reject NULL input");
     network_free(&net);
@@ -155,7 +156,7 @@ static void test_network_predict_rejects_null_input(void) {
 static void test_network_predict_returns_last_layer_activation(void) {
     uint32_t sizes[] = {2, 3, 1};
     ActivationType types[] = {RELU, SIGMOID};
-    Network *net = network_create(sizes, 3, types);
+    Network *net = network_create(sizes, 3, 1, types);
     Matrix *input = matrix_create(2, 1);
     Matrix *output;
 
@@ -177,7 +178,7 @@ static void test_network_predict_returns_last_layer_activation(void) {
 static void test_network_predict_computes_correct_output(void) {
     uint32_t sizes[] = {2, 1};
     ActivationType types[] = {SIGMOID};
-    Network *net = network_create(sizes, 2, types);
+    Network *net = network_create(sizes, 2, 1, types);
     Matrix *input = matrix_create(2, 1);
     Matrix *output;
     float expected_z;
@@ -221,7 +222,7 @@ static void test_network_backward_rejects_null_network(void) {
 static void test_network_backward_rejects_null_input(void) {
     uint32_t sizes[] = {2, 2};
     ActivationType types[] = {SIGMOID};
-    Network *net = network_create(sizes, 2, types);
+    Network *net = network_create(sizes, 2, 1, types);
     Matrix *target = matrix_create(2, 1);
 
     ASSERT_TRUE(net != NULL, "network_create should succeed");
@@ -235,7 +236,7 @@ static void test_network_backward_rejects_null_input(void) {
 static void test_network_backward_rejects_null_target(void) {
     uint32_t sizes[] = {2, 2};
     ActivationType types[] = {SIGMOID};
-    Network *net = network_create(sizes, 2, types);
+    Network *net = network_create(sizes, 2, 1, types);
     Matrix *input = matrix_create(2, 1);
 
     ASSERT_TRUE(net != NULL, "network_create should succeed");
@@ -246,10 +247,35 @@ static void test_network_backward_rejects_null_target(void) {
     tests_run++;
 }
 
+static void test_network_backward_rejects_invalid_shapes(void) {
+    uint32_t sizes[] = {2, 2};
+    ActivationType types[] = {SIGMOID};
+    Network *net = network_create(sizes, 2, 2, types);
+    Matrix *bad_input = matrix_create(2, 1);
+    Matrix *bad_target = matrix_create(2, 1);
+    Matrix *good_input = matrix_create(2, 2);
+
+    ASSERT_TRUE(net != NULL, "network_create should succeed");
+    ASSERT_TRUE(bad_input != NULL, "matrix_create should succeed");
+    ASSERT_TRUE(bad_target != NULL, "matrix_create should succeed");
+    ASSERT_TRUE(good_input != NULL, "matrix_create should succeed");
+
+    ASSERT_INT_EQ(network_backward(net, bad_input, bad_target), -1,
+                  "network_backward should reject mismatched batch shapes");
+    ASSERT_INT_EQ(network_backward(net, good_input, bad_target), -1,
+                  "network_backward should reject mismatched target shapes");
+
+    matrix_free(&bad_input);
+    matrix_free(&bad_target);
+    matrix_free(&good_input);
+    network_free(&net);
+    tests_run++;
+}
+
 static void test_network_backward_computes_output_gradients(void) {
     uint32_t sizes[] = {1, 1};
     ActivationType types[] = {SIGMOID};
-    Network *net = network_create(sizes, 2, types);
+    Network *net = network_create(sizes, 2, 1, types);
     Matrix *input = matrix_create(1, 1);
     Matrix *target = matrix_create(1, 1);
     Layer *layer;
@@ -282,7 +308,7 @@ static void test_network_backward_computes_output_gradients(void) {
 static void test_network_backward_propagates_to_hidden_layer(void) {
     uint32_t sizes[] = {1, 1, 1};
     ActivationType types[] = {TANH, SIGMOID};
-    Network *net = network_create(sizes, 3, types);
+    Network *net = network_create(sizes, 3, 1, types);
     Matrix *input = matrix_create(1, 1);
     Matrix *target = matrix_create(1, 1);
     Layer *hidden;
@@ -335,7 +361,7 @@ static void test_network_update_rejects_null_network(void) {
 static void test_network_update_applies_gradient_descent(void) {
     uint32_t sizes[] = {1, 1};
     ActivationType types[] = {SIGMOID};
-    Network *net = network_create(sizes, 2, types);
+    Network *net = network_create(sizes, 2, 1, types);
     Matrix *input = matrix_create(1, 1);
     Matrix *target = matrix_create(1, 1);
     Layer *layer;
@@ -377,7 +403,7 @@ static void test_network_update_applies_gradient_descent(void) {
 static void test_network_training_reduces_loss_mse(void) {
     uint32_t sizes[] = {2, 4, 1};
     ActivationType types[] = {RELU, SIGMOID};
-    Network *net = network_create(sizes, 3, types);
+    Network *net = network_create(sizes, 3, 1, types);
     Matrix *input = matrix_create(2, 1);
     Matrix *target = matrix_create(1, 1);
     Matrix *output;
@@ -419,7 +445,7 @@ static void test_network_training_reduces_loss_mse(void) {
 static void test_network_training_reduces_loss_log_loss(void) {
     uint32_t sizes[] = {2, 4, 1};
     ActivationType types[] = {RELU, SIGMOID};
-    Network *net = network_create(sizes, 3, types);
+    Network *net = network_create(sizes, 3, 1, types);
     Matrix *input = matrix_create(2, 1);
     Matrix *target = matrix_create(1, 1);
     Matrix *output;
@@ -465,7 +491,7 @@ static void test_network_training_reduces_loss_log_loss(void) {
 static void test_network_backward_uses_log_loss_derivative(void) {
     uint32_t sizes[] = {1, 1};
     ActivationType types[] = {SIGMOID};
-    Network *net = network_create(sizes, 2, types);
+    Network *net = network_create(sizes, 2, 1, types);
     Matrix *input = matrix_create(1, 1);
     Matrix *target = matrix_create(1, 1);
     Layer *layer;
@@ -524,6 +550,7 @@ int main(void) {
     test_network_backward_rejects_null_network();
     test_network_backward_rejects_null_input();
     test_network_backward_rejects_null_target();
+    test_network_backward_rejects_invalid_shapes();
     test_network_backward_computes_output_gradients();
     test_network_backward_propagates_to_hidden_layer();
     test_network_backward_uses_log_loss_derivative();

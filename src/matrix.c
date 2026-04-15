@@ -182,6 +182,33 @@ int matrix_add_scaled(Matrix *a, Matrix *b, float scalar, Matrix *out) {
     return 0;
 }
 
+int matrix_scale(Matrix *a, float s) {
+    if (!a ) return -1;
+
+    for (int32_t i = 0; i < a->rows; ++i) {
+        for (int32_t j = 0; j < a->cols; ++j) {
+            a->data[i * a->cols + j] *= s;
+        }
+    }
+
+    return 0;
+}
+
+int matrix_sum_columns(Matrix *a, Matrix *out) {
+    if (!a || !out) return -1;
+    if (out->rows != a->rows || out->cols != 1) return -2;
+
+    for (uint32_t i = 0; i < a->rows; ++i) {
+        float sum = 0.0f;
+        for (uint32_t j = 0; j < a->cols; ++j) {
+            sum += a->data[i * a->cols + j];
+        }
+        out->data[i] = sum;
+    }
+
+    return 0;
+}
+
 void matrix_print(Matrix *m) {
     if (!m) {
         printf("(null matrix)\n");

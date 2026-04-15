@@ -22,6 +22,7 @@ typedef struct {
 typedef struct {
     uint32_t in_size;   // input size
     uint32_t out_size;  // output size (number of neurons)
+    uint32_t batch_size;
 
     Matrix *W;      // weights
     Matrix *B;      // biases
@@ -37,7 +38,7 @@ typedef struct {
     float (*activation_prime)(float);
 } Layer;
 
-Layer *layer_create(uint32_t in_size, uint32_t out_size, ActivationType type);
+Layer *layer_create(uint32_t in_size, uint32_t out_size, uint32_t batch_size, ActivationType type);
 void layer_free(Layer **layer);
 int layer_forward(Layer *layer, Matrix *input);
 

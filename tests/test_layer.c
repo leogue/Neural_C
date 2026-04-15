@@ -69,7 +69,7 @@ static void test_layer_create_initializes_all_fields(void) {
     Layer *layer;
 
     srand(1234);
-    layer = layer_create(3, 2, TANH);
+    layer = layer_create(3, 2, 1, TANH);
 
     ASSERT_TRUE(layer != NULL, "layer_create should allocate a layer");
     ASSERT_INT_EQ((int)layer->in_size, 3, "in_size should match");
@@ -98,13 +98,14 @@ static void test_layer_create_initializes_all_fields(void) {
 }
 
 static void test_layer_create_rejects_zero_dimensions(void) {
-    ASSERT_TRUE(layer_create(0, 2, SIGMOID) == NULL, "layer_create should reject zero input size");
-    ASSERT_TRUE(layer_create(2, 0, SIGMOID) == NULL, "layer_create should reject zero output size");
+    ASSERT_TRUE(layer_create(0, 2, 1, SIGMOID) == NULL, "layer_create should reject zero input size");
+    ASSERT_TRUE(layer_create(2, 0, 1, SIGMOID) == NULL, "layer_create should reject zero output size");
+    ASSERT_TRUE(layer_create(2, 2, 0, SIGMOID) == NULL, "layer_create should reject zero batch size");
     tests_run++;
 }
 
 static void test_layer_forward_computes_expected_sigmoid_output(void) {
-    Layer *layer = layer_create(2, 2, SIGMOID);
+    Layer *layer = layer_create(2, 2, 1, SIGMOID);
     Matrix *input = matrix_create(2, 1);
 
     ASSERT_TRUE(layer != NULL, "layer_create should succeed");
@@ -131,7 +132,7 @@ static void test_layer_forward_computes_expected_sigmoid_output(void) {
 }
 
 static void test_layer_forward_computes_expected_relu_output(void) {
-    Layer *layer = layer_create(2, 2, RELU);
+    Layer *layer = layer_create(2, 2, 1, RELU);
     Matrix *input = matrix_create(2, 1);
 
     ASSERT_TRUE(layer != NULL, "layer_create should succeed");
@@ -158,7 +159,7 @@ static void test_layer_forward_computes_expected_relu_output(void) {
 }
 
 static void test_layer_forward_computes_expected_tanh_output(void) {
-    Layer *layer = layer_create(2, 1, TANH);
+    Layer *layer = layer_create(2, 1, 1, TANH);
     Matrix *input = matrix_create(2, 1);
     float expected_z = 0.75f;
 
@@ -181,7 +182,7 @@ static void test_layer_forward_computes_expected_tanh_output(void) {
 }
 
 static void test_layer_forward_rejects_invalid_input_shape(void) {
-    Layer *layer = layer_create(3, 2, RELU);
+    Layer *layer = layer_create(3, 2, 1, RELU);
     Matrix *bad_input = matrix_create(2, 1);
 
     ASSERT_TRUE(layer != NULL, "layer_create should succeed");
@@ -194,7 +195,7 @@ static void test_layer_forward_rejects_invalid_input_shape(void) {
 }
 
 static void test_layer_forward_rejects_invalid_input_columns(void) {
-    Layer *layer = layer_create(2, 2, SIGMOID);
+    Layer *layer = layer_create(2, 2, 1, SIGMOID);
     Matrix *bad_input = matrix_create(2, 2);
 
     ASSERT_TRUE(layer != NULL, "layer_create should succeed");
@@ -207,7 +208,7 @@ static void test_layer_forward_rejects_invalid_input_columns(void) {
 }
 
 static void test_layer_forward_rejects_null_arguments(void) {
-    Layer *layer = layer_create(2, 2, SIGMOID);
+    Layer *layer = layer_create(2, 2, 1, SIGMOID);
     Matrix *input = matrix_create(2, 1);
 
     ASSERT_TRUE(layer != NULL, "layer_create should succeed");
@@ -231,7 +232,7 @@ static void test_layer_free_is_null_safe(void) {
 static void test_network_backward_uses_activation_output_for_sigmoid_derivative(void) {
     uint32_t sizes[] = {1, 1};
     ActivationType types[] = {SIGMOID};
-    Network *net = network_create(sizes, 2, types);
+    Network *net = network_create(sizes, 2, 1, types);
     Matrix *input = matrix_create(1, 1);
     Matrix *target = matrix_create(1, 1);
     Layer *out_l;
@@ -264,7 +265,7 @@ static void test_network_backward_uses_activation_output_for_sigmoid_derivative(
 static void test_network_backward_uses_activation_output_for_hidden_tanh_derivative(void) {
     uint32_t sizes[] = {1, 1, 1};
     ActivationType types[] = {TANH, SIGMOID};
-    Network *net = network_create(sizes, 3, types);
+    Network *net = network_create(sizes, 3, 1, types);
     Matrix *input = matrix_create(1, 1);
     Matrix *target = matrix_create(1, 1);
     Layer *hidden_l;
@@ -316,7 +317,7 @@ static void test_network_backward_uses_activation_output_for_hidden_tanh_derivat
 static void test_network_create_initializes_all_layers(void) {
     uint32_t sizes[] = {3, 4, 2};
     ActivationType types[] = {RELU, SIGMOID};
-    Network *net = network_create(sizes, 3, types);
+    Network *net = network_create(sizes, 3, 1, types);
 
     ASSERT_TRUE(net != NULL, "network_create should succeed");
     ASSERT_INT_EQ((int)net->layer_count, 2, "layer_count should be count - 1");
@@ -338,10 +339,11 @@ static void test_network_create_rejects_invalid_parameters(void) {
     uint32_t sizes[] = {2, 3};
     ActivationType types[] = {SIGMOID};
 
-    ASSERT_TRUE(network_create(NULL, 2, types) == NULL, "network_create should reject NULL sizes");
-    ASSERT_TRUE(network_create(sizes, 2, NULL) == NULL, "network_create should reject NULL types");
-    ASSERT_TRUE(network_create(sizes, 1, types) == NULL, "network_create should reject count < 2");
-    ASSERT_TRUE(network_create(sizes, 0, types) == NULL, "network_create should reject count = 0");
+    ASSERT_TRUE(network_create(NULL, 2, 1, types) == NULL, "network_create should reject NULL sizes");
+    ASSERT_TRUE(network_create(sizes, 2, 1, NULL) == NULL, "network_create should reject NULL types");
+    ASSERT_TRUE(network_create(sizes, 1, 1, types) == NULL, "network_create should reject count < 2");
+    ASSERT_TRUE(network_create(sizes, 0, 1, types) == NULL, "network_create should reject count = 0");
+    ASSERT_TRUE(network_create(sizes, 2, 0, types) == NULL, "network_create should reject zero batch size");
     tests_run++;
 }
 
@@ -355,7 +357,7 @@ static void test_network_free_is_null_safe(void) {
 static void test_network_predict_rejects_null_arguments(void) {
     uint32_t sizes[] = {2, 2};
     ActivationType types[] = {SIGMOID};
-    Network *net = network_create(sizes, 2, types);
+    Network *net = network_create(sizes, 2, 1, types);
     Matrix *input = matrix_create(2, 1);
 
     ASSERT_TRUE(net != NULL, "network_create should succeed");
@@ -372,7 +374,7 @@ static void test_network_predict_rejects_null_arguments(void) {
 static void test_network_predict_returns_last_layer_activation(void) {
     uint32_t sizes[] = {2, 3, 1};
     ActivationType types[] = {RELU, SIGMOID};
-    Network *net = network_create(sizes, 3, types);
+    Network *net = network_create(sizes, 3, 1, types);
     Matrix *input = matrix_create(2, 1);
     Matrix *output;
 
@@ -394,7 +396,7 @@ static void test_network_predict_returns_last_layer_activation(void) {
 static void test_network_backward_rejects_null_arguments(void) {
     uint32_t sizes[] = {2, 2};
     ActivationType types[] = {SIGMOID};
-    Network *net = network_create(sizes, 2, types);
+    Network *net = network_create(sizes, 2, 1, types);
     Matrix *input = matrix_create(2, 1);
     Matrix *target = matrix_create(2, 1);
 
@@ -413,7 +415,7 @@ static void test_network_backward_rejects_null_arguments(void) {
 static void test_network_update_applies_gradient_descent(void) {
     uint32_t sizes[] = {1, 1};
     ActivationType types[] = {SIGMOID};
-    Network *net = network_create(sizes, 2, types);
+    Network *net = network_create(sizes, 2, 1, types);
     Matrix *input = matrix_create(1, 1);
     Matrix *target = matrix_create(1, 1);
     float initial_w;

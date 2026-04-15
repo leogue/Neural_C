@@ -21,12 +21,13 @@ typedef struct {
 typedef struct {
     Layer **layers;
     uint32_t layer_count;
+    uint32_t batch_size;
     LossType loss_type;
 } Network;
 
 LossPair get_loss(LossType type);
 
-Network *network_create(uint32_t *sizes, uint32_t count, ActivationType *types);
+Network *network_create(uint32_t *sizes, uint32_t count, uint32_t batch_size, ActivationType *types);
 void network_free(Network **net);
 
 Matrix *network_predict(Network *net, Matrix *input);
